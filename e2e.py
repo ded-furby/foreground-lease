@@ -48,10 +48,11 @@ def main():
     path = os.path.join(tempfile.mkdtemp(), "lease-e2e.txt")
     open(path, "w").close()
     was_running = subprocess.run(["pgrep", "-x", "TextEdit"], capture_output=True).returncode == 0
+    old_ids = {w["id"] for w in L.tool("windows") if w["app"] == "TextEdit"}  # never type into a pre-existing document
     subprocess.run(["open", "-a", "TextEdit", path], check=True)
     win = None
     for _ in range(50):
-        wins = [w for w in L.tool("windows") if w["app"] == "TextEdit" and w["w"] > 200]
+        wins = [w for w in L.tool("windows") if w["app"] == "TextEdit" and w["w"] > 200 and w["id"] not in old_ids]
         if wins:
             win = wins[0]
             break
