@@ -60,12 +60,14 @@ Anything else that reads the standard JSON form:
 | `type` | `text`, a `\n` presses return |
 | `wait` | `ms` |
 
+Any step also takes `pid`. A real click goes to whatever is on top at that point, exactly like yours would, so with `pid` set Lease refuses to act (error, nothing happens) unless the topmost window there belongs to that process, or for `key` and `type` unless that app is frontmost. Get pids from `windows`. Use it on every step.
+
 Example, open a context menu and pick its second item:
 
     {"steps": [
-      {"type": "click", "x": 2600, "y": 400, "button": "right"},
+      {"type": "click", "x": 2600, "y": 400, "button": "right", "pid": 4242},
       {"type": "wait", "ms": 150},
-      {"type": "key", "combo": "down"}, {"type": "key", "combo": "down"}, {"type": "key", "combo": "return"}
+      {"type": "key", "combo": "down", "pid": 4242}, {"type": "key", "combo": "down", "pid": 4242}, {"type": "key", "combo": "return", "pid": 4242}
     ]}
 
 ## Limits
@@ -83,7 +85,7 @@ Produces `build/Lease.app` and `build/Lease.dmg`. Logic self-check with a fake c
 
     build/Lease.app/Contents/MacOS/Lease --selftest
 
-End-to-end check with real input (Lease running, Accessibility granted): opens TextEdit on a temp file, clicks into it, types, saves, closes it, and verifies your focus and cursor came back.
+End-to-end check with real input (Lease running, Accessibility granted): opens TextEdit on a temp file, drags that window to free screen space, clicks into it, types, saves, checks the pid guard refuses a covered point, closes the window, and verifies your focus and cursor came back.
 
     python3 e2e.py
 

@@ -145,8 +145,42 @@ func typeText(_ text: String) throws {
     }
 }
 
+// Safety rail: with "pid" on a step, refuse to act unless the topmost window at the point belongs to
+// that process (mouse steps) or that app is frontmost (key/type). A real click goes to whatever is on
+// top, so this is what stops an agent from typing into the human's window when its target is covered.
+func topWindowOwner(at p: CGPoint) -> (pid: Int, app: String)? {
+    let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+    for w in list { // front to back; app windows only (the Dock owns an invisible full-screen window at layer 20)
+        guard (w[kCGWindowLayer as String] as? Int ?? 0) < 20,
+              ((w[kCGWindowAlpha as String] as? NSNumber)?.doubleValue ?? 1) > 0,
+              let b = w[kCGWindowBounds as String] as? [String: Any] else { continue }
+        func n(_ k: String) -> Double { (b[k] as? NSNumber)?.doubleValue ?? 0 }
+        if CGRect(x: n("X"), y: n("Y"), width: n("Width"), height: n("Height")).contains(p) {
+            return (w[kCGWindowOwnerPID as String] as? Int ?? 0, w[kCGWindowOwnerName as String] as? String ?? "?")
+        }
+    }
+    return nil
+}
+
+func expectTarget(_ s: Step, at p: CGPoint?) throws {
+    guard let want = s.num("pid").map({ Int($0) }) else { return }
+    if let p = p {
+        let at = "(\(Int(p.x)),\(Int(p.y)))"
+        guard let top = topWindowOwner(at: p) else { throw LeaseEnd.bad("no window at \(at); nothing was clicked") }
+        if top.pid != want {
+            throw LeaseEnd.bad("\(at) is covered by \(top.app) (pid \(top.pid)), not pid \(want); nothing was clicked")
+        }
+    } else {
+        let front = onMain { NSWorkspace.shared.frontmostApplication?.processIdentifier }.map { Int($0) }
+        if front != want {
+            throw LeaseEnd.bad("frontmost app is pid \(front ?? 0), not pid \(want); click its window and wait first, nothing was typed")
+        }
+    }
+}
+
 func performReal(_ s: Step) throws {
     let p = CGPoint(x: s.num("x") ?? 0, y: s.num("y") ?? 0)
+    try expectTarget(s, at: ["key", "type", "wait"].contains(s.type) ? nil : p)
     switch s.type {
     case "move":
         try post(mouse(.mouseMoved, p))
@@ -259,6 +293,7 @@ let stepSchema: [String: Any] = [
         "combo": ["type": "string", "description": "e.g. cmd+s, cmd+shift+z, escape, return, down"],
         "text": ["type": "string", "description": "text to type; \\n presses return"],
         "ms": ["type": "number", "description": "wait duration"],
+        "pid": ["type": "integer", "description": "safety rail: only act if the topmost window at (x,y) belongs to this pid, or for key/type if this app is frontmost; otherwise an error and nothing happens"],
     ],
     "required": ["type"],
 ]
